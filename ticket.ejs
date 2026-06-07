@@ -1,0 +1,79 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 600" width="400" height="600" id="ticketSvg">
+  <style>
+    :root {
+      --bg-color: #4CAF50; /* Green */
+      --text-color: #ffffff;
+    }
+    /* When expired class is added to svg, variables change */
+    #ticketSvg.expired {
+      --bg-color: #9e9e9e; /* Gray */
+    }
+    rect.background {
+      fill: var(--bg-color);
+      transition: fill 0.3s ease;
+    }
+    .ticket-text {
+      font-family: sans-serif;
+      fill: var(--text-color);
+      text-anchor: middle;
+    }
+    .expired-stamp {
+      display: none;
+      font-family: sans-serif;
+      font-size: 72px;
+      font-weight: bold;
+      fill: #ff0000;
+      text-anchor: middle;
+      transform: rotate(-30deg);
+      transform-origin: 200px 300px;
+      opacity: 0.9;
+    }
+    /* Show the stamp only when expired */
+    #ticketSvg.expired .expired-stamp {
+      display: block;
+    }
+    .qr-container {
+      fill: #ffffff;
+    }
+  </style>
+  
+  <!-- Background -->
+  <rect class="background" width="400" height="600" rx="20" ry="20" />
+  
+  <!-- Title -->
+  <text x="200" y="60" font-size="32" font-weight="bold" class="ticket-text"><%= eventName %></text>
+  <text x="200" y="90" font-size="18" class="ticket-text"><%= customerName %></text>
+  
+  <!-- QR Code Background Container -->
+  <rect x="50" y="150" width="300" height="300" rx="10" ry="10" class="qr-container" />
+  
+  <!-- Injected QR Code SVG (it should be centered) -->
+  <g transform="translate(75, 175)">
+    <%- qrCodeSvg %>
+  </g>
+  
+  <!-- Expiry Time Text -->
+  <text x="200" y="500" font-size="16" class="ticket-text">Valid Until: <%= expiryDateString %></text>
+  
+  <!-- Expired Stamp -->
+  <text x="200" y="320" class="expired-stamp">EXPIRED</text>
+
+  <script type="text/javascript">
+    <![CDATA[
+      (function() {
+        var expiryTime = <%= expiryTimestamp %>;
+        var checkExpiry = function() {
+          var currentTime = new Date().getTime();
+          var svgEl = document.getElementById('ticketSvg');
+          if (currentTime > expiryTime && svgEl) {
+            svgEl.classList.add('expired');
+          }
+        };
+        // Check immediately
+        checkExpiry();
+        // Check every second while open
+        setInterval(checkExpiry, 1000);
+      })();
+    ]]>
+  </script>
+</svg>
