@@ -6,8 +6,16 @@ import * as MediaLibrary from 'expo-media-library';
 import QRCode from 'react-native-qrcode-svg';
 import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as SecureStore from 'expo-secure-store';
+import * as Device from 'expo-device';
+import CryptoJS from 'crypto-js';
+import nacl from 'tweetnacl';
+import naclUtil from 'tweetnacl-util';
 
+// HARDCODED DEMO KEYPAIR (Private Key + Public Key)
+// In production, the PRIVATE KEY stays strictly on the backend!
+const DEMO_SEED = naclUtil.decodeUTF8('ticket-demo-seed-32-bytes-long!!'); 
+const DEMO_KEYPAIR = nacl.sign.keyPair.fromSeed(DEMO_SEED);
 export default function App() {
   const [inputText, setInputText] = useState('');
   const [inputTime, setInputTime] = useState('60');
@@ -19,6 +27,25 @@ export default function App() {
   const [status, requestPermission] = MediaLibrary.usePermissions();
   const viewShotRef = useRef(null);
   const qrRef = useRef(null);
+
+  const generateAsymmetricToken = (payload) => {
+    // 1. Convert JSON payload to bytes
+    const payloadStr = JSON.stringify(payload);
+    const payloadBytes = naclUtil.decodeUTF8(payloadStr);
+    
+    // 2. Generate Digital Signature using the Private Key
+    const signatureBytes = nacl.sign.detached(payloadBytes, DEMO_KEYPAIR.secretKey);
+    
+    // 3. Encode to Base64 so it can fit nicely inside a QR code
+    const payloadBase64 = naclUtil.encodeBase64(payloadBytes);
+    const signatureBase64 = naclUtil.encodeBase64(signatureBytes);
+    
+    // 4. Return as a combined JSON structure
+    return JSON.stringify({
+      payload: payloadBase64,
+      signature: signatureBase64
+    });
+  };
 
   const generateHTML = (name, qrBase64, expiryTimestamp, initialSeconds) => `
 <!DOCTYPE html>
@@ -81,9 +108,11 @@ export default function App() {
     let interval;
     if (timerActive && appExpiryTimestamp) {
       interval = setInterval(() => {
-        const remaining = Math.max(0, Math.floor((appExpiryTimestamp - Date.now()) / 1000));
-        setTimeLeft(remaining);
-        if (remaining === 0) setTimerActive(false);
+        Device.getUptimeAsync().then((uptimeMs) => {
+          const remaining = Math.max(0, Math.floor((appExpiryTimestamp - uptimeMs) / 1000));
+          setTimeLeft(remaining);
+          if (remaining === 0) setTimerActive(false);
+        });
       }, 1000);
     }
     return () => clearInterval(interval);
@@ -92,17 +121,18 @@ export default function App() {
   useEffect(() => {
     const loadSavedTicket = async () => {
       try {
-        const saved = await AsyncStorage.getItem('savedTicket');
+        const saved = await SecureStore.getItemAsync('savedTicket');
         if (saved) {
           const ticketData = JSON.parse(saved);
-          if (ticketData.expiryTimestamp > Date.now()) {
+          const currentUptime = await Device.getUptimeAsync();
+          if (ticketData.expiryTimestamp > currentUptime) {
             setInputText(ticketData.name);
             setGenerationMethod('svg');
             setAppExpiryTimestamp(ticketData.expiryTimestamp);
             setTicketGenerated(true);
             setTimerActive(true);
           } else {
-            await AsyncStorage.removeItem('savedTicket');
+            await SecureStore.deleteItemAsync('savedTicket');
           }
         }
       } catch (e) {
@@ -122,18 +152,20 @@ export default function App() {
       Alert.alert('Error', 'Please enter a valid time in seconds');
       return;
     }
-    const expiry = Date.now() + (timeInSeconds * 1000);
+    const currentUptime = await Device.getUptimeAsync();
+    const expiryUptime = currentUptime + (timeInSeconds * 1000);
+    
     setGenerationMethod(method);
     setTicketGenerated(true);
-    setAppExpiryTimestamp(expiry);
+    setAppExpiryTimestamp(expiryUptime);
     setTimeLeft(timeInSeconds);
     setTimerActive(true);
 
     if (method === 'svg') {
       try {
-        await AsyncStorage.setItem('savedTicket', JSON.stringify({
+        await SecureStore.setItemAsync('savedTicket', JSON.stringify({
           name: inputText,
-          expiryTimestamp: expiry
+          expiryTimestamp: expiryUptime
         }));
       } catch (e) {
         console.error('Failed to save ticket', e);
@@ -146,7 +178,9 @@ export default function App() {
       try {
         qrRef.current.toDataURL(async (data) => {
           const base64Image = `data:image/png;base64,${data}`;
-          const htmlContent = generateHTML(inputText, base64Image, appExpiryTimestamp, parseInt(inputTime, 10));
+          // For HTML absolute time, we generate it based on wall clock so HTML timers work independently
+          const absoluteExpiry = Date.now() + (timeLeft * 1000);
+          const htmlContent = generateHTML(inputText, base64Image, absoluteExpiry, parseInt(inputTime, 10));
           const fileUri = FileSystem.documentDirectory + 'GymPass.html';
           await FileSystem.writeAsStringAsync(fileUri, htmlContent, { encoding: FileSystem.EncodingType.UTF8 });
           await Sharing.shareAsync(fileUri);
@@ -220,7 +254,7 @@ export default function App() {
               
               <View style={styles.qrContainer}>
                 <QRCode
-                  value={JSON.stringify({ name: inputText, type: 'DayPass', expiresAt: appExpiryTimestamp })}
+                  value={generateAsymmetricToken({ name: inputText, type: 'DayPass', expiresAt: Date.now() + (timeLeft * 1000) })}
                   size={150}
                   color="black"
                   backgroundColor="white"

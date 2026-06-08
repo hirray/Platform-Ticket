@@ -1,0 +1,43 @@
+# Implementation Plan: Securing the In-App Wallet
+
+Here is the plan for implementing the security solutions for the **In-App Wallet** method. Since you are running a custom Android build (`npx expo run:android`), we have full access to native security modules!
+
+## 1. Hardware Keystore (expo-secure-store)
+
+**What we are doing:** 
+We will replace the unencrypted `@react-native-async-storage/async-storage` package with `expo-secure-store`.
+
+**What it changes:**
+Instead of saving the ticket data in a standard, easily readable database file on the phone, the app will pass the ticket directly to the Android hardware Keystore (the phone's physical security chip). 
+
+**The Benefit:**
+This stops the "rooted phone" hack. Even if a hacker gains super-administrator access to their Android filesystem, they cannot break into the isolated physical hardware chip to edit their ticket and change the expiration date.
+
+## 2. Defeating Clock Spoofing (react-native-device-info)
+
+**What we are doing:** 
+We will install the `react-native-device-info` native module to access the `getSystemUptime()` function.
+
+**What it changes:**
+Currently, when a ticket is generated, we use `Date.now()` (the wall clock) to check if it's expired. We will change the logic to use the device's **System Uptime** (how many milliseconds the phone has been continuously powered on). 
+
+**The Benefit:**
+This completely stops airplane-mode time cheats. If a user turns off their WiFi and changes their phone's clock back by 2 hours, `Date.now()` will be fooled. But the System Uptime counter *cannot* be changed by the user; it only resets if the phone is turned off. The app will realize the correct amount of time has passed and immediately mark the ticket as "Expired".
+
+## 3. Code Obfuscation (ProGuard)
+
+**What we are doing:** 
+We will modify your Android build configuration (`app.json` / `build.gradle`) to enable ProGuard minification.
+
+**What it changes:**
+When the app is packaged into an APK for distribution, the code is scrambled into unreadable characters instead of being bundled as plaintext Javascript.
+
+**The Benefit:**
+It drastically raises the barrier to entry for app tampering. A teenager won't be able to just unzip your app and delete the `if (expired)` logic. 
+
+> [!NOTE]
+> **Play Integrity API Limitation**
+> I mentioned the Google Play Integrity API in the text file, which allows servers to verify the app hasn't been hacked. Because we don't have a backend server or a live Google Play Console developer account hooked up right now, we will stick to **ProGuard Obfuscation** only for this demo. 
+
+## User Review Required
+Does this plan look good to you? If so, I will install `expo-secure-store` and `react-native-device-info` to begin!

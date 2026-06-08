@@ -1,0 +1,32 @@
+# Implementation Plan: Asymmetric Digital Signatures (In-App Wallet)
+
+We will upgrade the In-App ticket generation to meet **Constraint A (Cryptographic Proof)** and **Constraint C (Legal Liability)** by replacing the plaintext JSON payload with a cryptographically signed payload using Asymmetric Cryptography (Ed25519 Elliptic Curve Signatures).
+
+## Proposed Changes
+
+We will use **TweetNaCl**, an industry-standard, lightweight, pure-JavaScript cryptography library that is highly audited and widely used for Ed25519 asymmetric signatures.
+
+### 1. Cryptography Implementation
+- We will install `tweetnacl` and `tweetnacl-util` (for text encoding).
+- We will generate a static **Ed25519 Keypair** (Public Key and Private Key) for the demo.
+- In a production environment, the **Private Key** lives securely on a central government server (and signs tickets), while the **Public Key** lives inside the scanner apps (allowing offline verification without risk of the keys being stolen). For our offline demo, we will simulate this by keeping the keys in the app.
+
+### 2. QR Code Payload Upgrade
+- When the user generates a ticket, the app will encode the ticket JSON to bytes.
+- The app will use the Private Key to generate a detached **Digital Signature** (`nacl.sign.detached`).
+- The QR Code value will be updated from `{ name, expiry }` to a secure structure:
+  ```json
+  {
+    "payload": "Base64(Ticket JSON)",
+    "signature": "Base64(Digital Signature)"
+  }
+  ```
+- **The Benefit:** If a hacker changes the payload (e.g., changes their name or expiry date), the signature mathematically breaks. The scanner app will run the Public Key against the altered payload, see the signature doesn't match, and reject the ticket immediately. 
+
+## User Review Required
+
+> [!WARNING]
+> **Demo Keypair Disclaimer**
+> Because this is a standalone demo app, the app will generate and hold both the Private and Public keys. I will add a comment in the code clarifying that for the real production app, the Private Key must be strictly held on your backend servers, and the mobile app should only ever receive the final signed QR string from the API.
+> 
+> Does this technical approach sound good for your government presentation?

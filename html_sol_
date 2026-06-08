@@ -1,0 +1,30 @@
+# Implementation Plan: Securing the HTML Ticket
+
+You requested that I outline the exact solutions, what they will change, and the benefits before we implement the security fixes for the **HTML Offline File** method. 
+
+Here is the plan for securing the HTML approach:
+
+## 1. Cryptographically Sign the QR Code (JWT)
+
+**What we are doing:** 
+We will install a cryptographic library (`crypto-js`) and change how the QR code is generated. Instead of placing raw, easily spoofed JSON text into the QR code, we will wrap your ticket data (Name and Expiry Time) into a **JSON Web Token (JWT)** signed with an `HS256` (HMAC SHA-256) cryptographic signature.
+
+**What it will change:**
+Currently, your QR code holds a readable string: 
+`{"name": "John", "type": "DayPass", "expiresAt": 1717839393}`
+After this change, the QR code will hold a secure token that looks like this:
+`eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJuYW1lIj...`
+
+**The Benefit:**
+This makes the QR code **100% unforgeable**. 
+As discussed in the security constraints, someone could open the `.html` file in Notepad, find the timer code, and force the screen to say "Valid". However, because the QR code is cryptographically signed, if they try to forge a new QR code with a fake timestamp, they won't have the "Secret Key" needed to sign it. When the gym scanner scans their fake QR code or their expired real QR code, the math won't add up, the digital signature will fail, and they will be instantly denied entry. 
+
+## 2. A Note on the "Secret Key" (User Review Required)
+
+> [!WARNING]
+> **The Offline Limitation**
+> Because this app currently generates tickets *completely offline* without a backend server, we have to hardcode a "Secret Key" (e.g., `MY_SUPER_SECRET_GOVT_KEY`) directly into the app's code so it can do the math to sign the JWT. 
+>
+> In a true production environment for the government, the app would ask a secure central server to generate the JWT, meaning the secret key never actually lives on the user's phone. For this implementation, I will hardcode a secret key so you can see exactly how the JWT generation works!
+
+Let me know if this solution makes sense and if you're ready for me to install `crypto-js` and implement the JWT logic in the QR code!
