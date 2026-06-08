@@ -1,0 +1,63 @@
+=========================================================
+SECURITY CONCERNS, SOLUTIONS, AND EXAMPLES
+Target Audience: General Enterprise & The Indian Government
+=========================================================
+
+This document outlines the security risks and solutions for the two offline ticket generation methods. It is written to be easily understood, featuring real-world examples alongside the necessary technical terms.
+
+---------------------------------------------------------
+1. THE HTML OFFLINE FILE METHOD
+---------------------------------------------------------
+How it works: A standalone .html file is downloaded to the phone containing the ticket design and a Javascript timer.
+
+RISK A: Code Tampering (Plaintext Vulnerability)
+- What it means: HTML is not a compiled application; it's plain text. Anyone can read and edit the code.
+- Simple Example: A teenager downloads the ticket.html file, opens it in Notepad on their computer, finds the line of code that says "Expired", and types "Valid" over it. They send this modified file back to their phone and show it at the gate.
+- Technical Solution: Cryptographically Sign the QR Code (JWT).
+- Solution Example: We encode the ticket into a JSON Web Token (JWT) signed with an unforgeable digital signature. Even if the teenager edits the visual HTML timer to say "Valid", when the guard scans the QR code, the scanner checks the digital signature, realizes it's expired, and denies entry.
+
+RISK B: Bypassing Screenshot Defenses
+- What it means: While our Javascript code blocks standard phone screenshots, it cannot block third-party software.
+- Simple Example: A user starts a third-party screen-recording app, opens their valid ticket for 10 seconds, and saves the video. At the gate, they just play the video in loop, and the guard thinks it's a live app.
+- Technical Solution: Dynamic Verification via Signed QR.
+- Solution Example: Since HTML cannot block screen recording (no DRM capabilities), the solution relies on the scanner. If a user plays a recorded video of a ticket from 2 hours ago, the QR code in that video is also 2 hours old. The scanner will instantly reject it.
+
+---------------------------------------------------------
+2. THE IN-APP WALLET (ASYNCSTORAGE) METHOD
+---------------------------------------------------------
+How it works: The ticket data is saved locally inside the React Native app's database.
+
+RISK A: Unencrypted Storage
+- What it means: `AsyncStorage` saves data in plain text within the phone's hidden app folders.
+- Simple Example: A hacker uses a "rooted" or "jailbroken" phone (which gives them super-administrator access) to browse hidden app files. They find the ticket database and change their expiration year from 2024 to 2099.
+- Technical Solution: Secure Enclave / Hardware Keystore.
+- Solution Example: We migrate to `react-native-keychain`. Instead of saving the ticket in a normal folder, the app hands the ticket to the phone's physical security chip (Secure Enclave). Even if the hacker roots the phone, they cannot break into the physical hardware chip to change the date.
+
+RISK B: Device Clock Spoofing
+- What it means: The app checks `Date.now()` to see if the ticket is expired. `Date.now()` relies on the user's phone clock.
+- Simple Example: A user's 1-hour ticket is about to expire. They turn on Airplane Mode, go to their phone settings, and change the time from 2:00 PM back to 1:00 PM. The app checks the clock, thinks it's 1:00 PM, and gives them another hour.
+- Technical Solution: Monotonic Clocks / Uptime tracking.
+- Solution Example: Instead of checking the wall clock, the app uses a "Monotonic Clock" library to check how many seconds the phone has been turned on since its last reboot. Changing the timezone or clock settings does not affect the phone's internal uptime counter, completely stopping the cheat.
+
+RISK C: App Tampering (Reverse Engineering)
+- What it means: Malicious actors can break down the app (decompile), modify the code, and rebuild it (recompile).
+- Simple Example: A software piracy group decompiles the app, finds the line of code that says `if (ticket is expired) { block entry }`, deletes that line entirely, and distributes this "hacked" version of the app to their friends.
+- Technical Solution: Code Obfuscation & Play Integrity API.
+- Solution Example: We use ProGuard/R8 to scramble (obfuscate) our code so it looks like gibberish to humans. We also implement the Google Play Integrity API, which allows our servers to verify that the app running on the user's phone is the official, untouched version from the App Store.
+
+---------------------------------------------------------
+3. CONSTRAINTS FOR THE INDIAN GOVERNMENT
+---------------------------------------------------------
+Selling to the Indian Government (e.g., ASI monuments, Railways) involves strict audits by CERT-In (Indian Computer Emergency Response Team).
+
+Constraint A: Cryptographic Proof (Non-Repudiation)
+- Current Flaw: Our QR code contains raw JSON text (e.g., {"name": "John"}). It's like writing a hall pass on a sticky note. Anyone can forge it.
+- Government Requirement: The government requires Digital Signatures. The QR payload must be signed using asymmetric cryptography (like Aadhaar cards). It’s the digital equivalent of an unforgeable Wax Seal. If the wax seal (digital signature) is missing or broken, the scanner rejects the ticket.
+
+Constraint B: No Unencrypted Data
+- Current Flaw: `AsyncStorage` is unencrypted.
+- Government Requirement: CERT-In explicitly forbids storing sensitive identity or access tokens in unencrypted local storage. You must use hardware-backed encryption (like the `react-native-keychain` solution mentioned above).
+
+Constraint C: Legal Liability (IT Act, 2000)
+- Simple Example: If terrorists use modified HTML files to bypass security at a government facility, your company is held responsible.
+- Consequence: Under Section 43 and Section 66 of the Information Technology Act, 2000, your company could face massive fines, and you would be permanently blacklisted from the Government e-Marketplace (GeM). This is why shifting trust to a cryptographically secure QR code (which the user cannot fake) is mandatory before launching.
